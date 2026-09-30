@@ -3,17 +3,15 @@ const config = require('../config');
 const { insertMsg, updateFile, updateLogMessageId, getLogById } = require('../database');
 const { findTarget, executeMute, executeUnmute, parseDuration } = require('../utils/muteParser');
 
-// ============ EMOJI REACT ============
 const EMOJIS = [
-    '1495863169338310768',
-    '1495863123394166975',
-    '1514453224860422204',
-    '1529108780074143835',
-    '1493842777656528916',
-    '1453988462851260528'
+    '1554874322823282728',
+    '1554874111824629771',
+    '1554874110021206117',
+    '1554874108024586241',
+    '1554874105692557372',
+    '1554874100822966292'
 ];
 
-// ============ HELPER ============
 function getAuthorDisplay(log, client) {
     const user = client.users.cache.get(log.author_id);
     if (user) return user.tag;
@@ -61,8 +59,6 @@ module.exports = {
         const content = message.content;
         const lower = content.toLowerCase();
 
-        // ============ PRIORITY 1: XỬ LÝ LỆNH PREFIX MUTE/UNMUTE ============
-        // Check trước tất cả — nếu là lệnh mute/unmute thì return luôn
         if (lower.startsWith('e!mute')) {
             return await handlePrefixMute(client, message);
         }
@@ -71,21 +67,17 @@ module.exports = {
             return await handlePrefixUnmute(client, message);
         }
 
-        // ============ CHẶN LOOP ============
         if (message.channel.id === config.DATABASE_CHANNEL_ID) return;
         if (message.channel.id === config.LOG_CHANNEL_ID) return;
         if (message.channel.id === config.FAST_DATA_CHANNEL_ID) return;
 
-        // ============ REACT EMOJI ============
         if (message.mentions.has(client.user) && !message.mentions.everyone) {
             const randomEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
             try { await message.react(randomEmoji); } catch {}
         }
 
-        // Bỏ qua tin nhắn trống
         if (!content && message.attachments.size === 0) return;
 
-        // ============ INSERT DB NGAY ============
         try {
             insertMsg.run(
                 message.id,
@@ -101,7 +93,6 @@ module.exports = {
             console.error('❌ Lỗi insert sớm:', err.message);
         }
 
-        // ============ FORWARD FILE SANG DB → FAST DATA ============
         if (message.attachments.size > 0) {
             try {
                 const dbChannel = await client.channels
@@ -120,20 +111,16 @@ module.exports = {
                     return;
                 }
 
-                // Forward gốc → DB
                 const dbForwardedMsg = await message.forward(dbChannel);
                 console.log(`✅ Forward gốc → DB: ${dbForwardedMsg.id}`);
 
-                // Forward DB → Fast Data
                 const fdForwardedMsg = await dbForwardedMsg.forward(fastChannel);
                 console.log(`✅ Forward DB → Fast Data: ${fdForwardedMsg.id}`);
 
                 const dbMessageId = fdForwardedMsg.id;
 
-                // Update DB
                 updateFile.run(null, dbMessageId, message.id);
 
-                // ============ NẾU TIN NHẮN ĐÃ BỊ XÓA → XÓA PLACEHOLDER + FORWARD + EMBED REPLY ============
                 let updatedLog = getLogById.get(message.id);
 
                 if (updatedLog?.is_deleted === 1 && !updatedLog.log_message_id) {
@@ -150,7 +137,6 @@ module.exports = {
                             .catch(() => null);
                         if (!logChannel) return;
 
-                        // Xóa placeholder
                         const placeholderMsg = await logChannel.messages
                             .fetch(updatedLog.log_message_id)
                             .catch(() => null);
@@ -159,11 +145,9 @@ module.exports = {
                             console.log(`🗑️ Đã xóa placeholder`);
                         }
 
-                        // Forward tin Fast Data → log
                         const logForwardedMsg = await fdForwardedMsg.forward(logChannel);
                         console.log(`✅ Đã forward file vào log`);
 
-                        // Gửi EMBED reply vào forward
                         const metaEmbed = buildMetaEmbed(updatedLog, client);
                         try {
                             const embedMsg = await logChannel.send({
@@ -191,11 +175,7 @@ module.exports = {
     }
 };
 
-// ==================================================================
-// ============ HELPER: XỬ LÝ LỆNH PREFIX MUTE =====================
-// ==================================================================
 async function handlePrefixMute(client, message) {
-    // Check quyền
     if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
         return message.reply('❌ Bạn không có quyền Quản Lý Thành Viên để dùng lệnh này!');
     }
@@ -210,23 +190,19 @@ async function handlePrefixMute(client, message) {
         return message.reply('⚠️ Bạn chưa chỉ định người cần mute!\n👉 Cú pháp: `e!mute @user [thời gian] [lý do]`');
     }
 
-    // Tách args
     let args = rawContent.includes('/')
         ? rawContent.split('/').map(a => a.trim()).filter(Boolean)
         : rawContent.split(/\s+/).filter(Boolean);
 
-    // Tìm target: arg đầu tiên
     const targetArg = args.shift();
     const target = await findTarget(message.guild, targetArg);
     if (!target) {
         return message.reply(`⚠️ Không tìm thấy user: \`${targetArg}\``);
     }
 
-    // Check không tự mute hoặc mute bot
     if (target.id === message.author.id) return message.reply('❌ Bạn không thể tự mute chính mình!');
     if (target.id === client.user.id) return message.reply('❌ Bạn không thể mute Bot!');
 
-    // Tìm duration và reason
     let durationStr = null;
     let reasonParts = [];
 
@@ -254,11 +230,7 @@ async function handlePrefixMute(client, message) {
     });
 }
 
-// ==================================================================
-// ============ HELPER: XỬ LÝ LỆNH PREFIX UNMUTE ===================
-// ==================================================================
 async function handlePrefixUnmute(client, message) {
-    // Check quyền
     if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
         return message.reply('❌ Bạn không có quyền Quản Lý Thành Viên để dùng lệnh này!');
     }
