@@ -2,14 +2,15 @@ const { Events, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const config = require('../config');
 const { insertMsg, updateFile, updateLogMessageId, getLogById } = require('../database');
 const { findTarget, executeMute, executeUnmute, parseDuration } = require('../utils/muteParser');
+const { handleWordChain } = require('../utils/wordChainGame');
 
 const EMOJIS = [
-    '1554874322823282728',
-    '1554874111824629771',
-    '1554874110021206117',
-    '1554874108024586241',
-    '1554874105692557372',
-    '1554874100822966292'
+    '1495863169338310768',
+    '1495863123394166975',
+    '1514453224860422204',
+    '1529108780074143835',
+    '1493842777656528916',
+    '1453988462851260528'
 ];
 
 function getAuthorDisplay(log, client) {
@@ -59,6 +60,7 @@ module.exports = {
         const content = message.content;
         const lower = content.toLowerCase();
 
+        // ============ PRIORITY 1: MUTE/UNMUTE ============
         if (lower.startsWith('e!mute')) {
             return await handlePrefixMute(client, message);
         }
@@ -67,10 +69,16 @@ module.exports = {
             return await handlePrefixUnmute(client, message);
         }
 
+        // ============ PRIORITY 2: WORD CHAIN GAME ============
+        const isWordChain = await handleWordChain(client, message, content, lower);
+        if (isWordChain) return;
+
+        // ============ CHẶN LOOP ============
         if (message.channel.id === config.DATABASE_CHANNEL_ID) return;
         if (message.channel.id === config.LOG_CHANNEL_ID) return;
         if (message.channel.id === config.FAST_DATA_CHANNEL_ID) return;
 
+        // ============ REACT EMOJI ============
         if (message.mentions.has(client.user) && !message.mentions.everyone) {
             const randomEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
             try { await message.react(randomEmoji); } catch {}
@@ -78,6 +86,7 @@ module.exports = {
 
         if (!content && message.attachments.size === 0) return;
 
+        // ============ INSERT DB ============
         try {
             insertMsg.run(
                 message.id,
@@ -93,6 +102,7 @@ module.exports = {
             console.error('❌ Lỗi insert sớm:', err.message);
         }
 
+        // ============ FORWARD FILE ============
         if (message.attachments.size > 0) {
             try {
                 const dbChannel = await client.channels
@@ -175,6 +185,9 @@ module.exports = {
     }
 };
 
+// ==================================================================
+// ============ MUTE HANDLERS =======================================
+// ==================================================================
 async function handlePrefixMute(client, message) {
     if (!message.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
         return message.reply('❌ Bạn không có quyền Quản Lý Thành Viên để dùng lệnh này!');
